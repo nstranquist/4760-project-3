@@ -8,8 +8,6 @@
 
 #define MAX_LICENSES 20
 
-#define MAX_CANON 150
-
 struct License {
   int nlicenses; // used the same as before
   int nlicenses_max; // defaults to MAX_LICENSES but can be lowered to 'n' supplied in CLI argument

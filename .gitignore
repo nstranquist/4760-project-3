@@ -3,6 +3,7 @@
 .vscode/
 examples/
 critical-section/
+semaphores/
 runsim
 testsim
 *.data

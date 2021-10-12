@@ -30,6 +30,11 @@
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <getopt.h>
+#include <limits.h> // to check for INT_MAX
+#include <semaphore.h>
+#include <sys/sem.h>
+
 #include "config.h"
 #include "license.h"
 
@@ -104,27 +109,77 @@ static int setupitimer(void) {
 
 // Write a runsim program that runs up to n processes at a time. Start the runsim program by typing the following command
 int main(int argc, char *argv[]) {
-  // Validate CLI Arguments
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s <number-of-licenses>\n", argv[0]);
-    return -1;
-  }
-  if(!atoi(argv[1])) {
-    fprintf(stderr, "Usage: %s <number-of-licenses>, where n is an integer\n", argv[0]);
-    return -1;
+  // get option for "-t" time, if it exists
+  int option;
+  int sleepTime;
+  int hasSleepTime = 0; // change to 1 for true
+  int nlicensesInput;
+
+  while((option = getopt(argc, argv, "t:")) != -1) {
+    switch(option) {
+      case 't':
+        // check that sleepTime is integer
+        if(!atoi(optarg)) {
+          fprintf(stderr, "runsim: Error: Sleep time must be an integer\n");
+          return 1;
+        }
+        sleepTime = atoi(optarg);
+        hasSleepTime = 1;
+        break;
+      default:
+        fprintf(stderr, "runsim: Error: Invalid option. Only -t is allowed.\n");
+        return 1;
+    }
   }
 
-  // parse argv[1] to get the number of licenses available at the same time
-  int nlicensesInput = atoi(argv[1]);
+  // Validate CLI Arguments
+  if (argc != 2 && argc != 4) {
+    printf("argc: %d\n", argc);
+    fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>\n", argv[0]);
+    return -1;
+  }
+  if(argc == 2) {
+    if(!atoi(argv[1])) {
+      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      return -1;
+    }
+    nlicensesInput = atoi(argv[1]);
+  }
+  else if(argc == 4) {
+    if(!atoi(argv[3])) {
+      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      return -1;
+    }
+    nlicensesInput = atoi(argv[3]);
+  }
+
+  if(hasSleepTime == 1) {
+    if(sleepTime < 0) {
+      fprintf(stderr, "runsim: Error: Usage: sleep time specified by -t must be greater than 0");
+      return -1;
+    }
+    // check if sleepTime overflows integer
+    if(sleepTime >= INT_MAX) {
+      fprintf(stderr, "runsim: Error: Usage: sleep time specified by -t is too large.");
+      return -1;
+    }
+    printf("sleep time valid: %d\n", sleepTime);
+  }
+  else {
+    sleepTime = SLEEP_TIME; // assign to default (100s) if none provided
+    printf("using default sleep time: %d\n", sleepTime);
+  }
 
   if(nlicensesInput < 0) {
-    fprintf(stderr, "Usage: %s <number-of-licenses>, where n is an integer >= 0\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-t sec] <number-of-licenses>, where n is an integer >= 0\n", argv[0]);
     return -1;
   }
   else if(nlicensesInput > MAX_LICENSES) {
     printf("runsim: Warning: Max Licenses at a time is %d\n", MAX_LICENSES);
     nlicensesInput = MAX_LICENSES;
   }
+
+  return 0;
 
   // Set up timers and interrupt handler
   int err = setupitimer();
