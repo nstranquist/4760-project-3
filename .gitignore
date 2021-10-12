@@ -1,0 +1,9 @@
+*.o
+*.a
+.vscode/
+examples/
+critical-section/
+runsim
+testsim
+*.data
+*.log
