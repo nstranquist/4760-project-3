@@ -71,25 +71,23 @@ struct sembuf semwait[1];
 extern struct License *nlicenses;
 
 static void myhandler(int signum) {
-  printf("\n\nin handler\n\n");
-  printf("received signal: %d\n", signum);
   if(signum == SIGINT) {
     // is ctrl-c interrupt
-    printf("\nrunsim: Ctrl-C Interrupt Detected. Shutting down gracefully...\n");
+    perror("\nrunsim: Ctrl-C Interrupt Detected. Shutting down gracefully...\n");
   }
   else if(signum == SIGPROF) {
+    perror("\nrunsim: The time for this program has expired. Shutting down gracefully...\n");
+  }
+  else if(signum == SIGALRM) {
     // is timer interrupt
-    printf("\nrunsim: The time for this program has expired. Shutting down gracefully...\n");
+    perror("\nrunsim: Info: The time for this program has expired. Shutting down gracefully...\n");
   }
   else {
-    printf("\nrunsim: Warning: Only Ctrl-C and Timer signal interrupts are being handled.\n");
+    perror("\nrunsim: Warning: Only Ctrl-C and Timer signal interrupts are being handled.\n");
     return; // ignore the interrupt, do not exit
   }
 
   // free memory and exit
-  char bufr[80];
-  sprintf(bufr, "runsim: Error: semid result: %d\n", semid);
-  perror(bufr);
 
   // Print time to logfile before exit
   char *msg = getTimeFormattedMessage(" - Termination");
@@ -147,12 +145,22 @@ static void myhandler(int signum) {
 	exit(1);
 }
 
+// to handle time interrupts
+static int timerHandler(int s) {
+  perror("Timer handler called\n");
+  int errsave;
+  errsave = errno;
+  write(STDERR_FILENO, "The time limit was reached\n", 1);
+  raise(SIGINT);
+  errno = errsave;
+}
+
 static int setupinterrupt(void) {
-  printf("setting up interrupt\n");
+  perror("setting up interrupt\n");
   struct sigaction act;
   act.sa_handler = myhandler;
   act.sa_flags = 0;
-  return (sigemptyset(&act.sa_mask) || sigaction(SIGPROF, &act, NULL));
+  return (sigemptyset(&act.sa_mask) || sigaction(SIGPROF, &act, NULL) || sigaction(SIGALRM, &act, NULL));
 }
 
 static int setupitimer(int sleepTime) {
@@ -250,7 +258,12 @@ int main(int argc, char *argv[]) {
 
   signal(SIGINT, myhandler);
 
+  // initialize timer
+  alarm(sleepTime);
+
   printf("%d licenses specified\n", nlicensesInput);
+
+  sleep(30);
 
   // allocate shared memory
   shmid = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
@@ -543,11 +556,11 @@ void docommand(char *cline) {
     printf("Grand child finished, result: %d\n", WEXITSTATUS(grandchild_status));
 
     if ((error = r_semop(semid, semwait, 1)) == -1) {
-      fprintf(stderr, "runsim: Error: Child failed to lock semid: %d", error);
+      fprintf(stderr, "runsim: Error: Child failed to lock semid: %d\n", error);
       exit(1);
     }
     else {
-      printf("starting crit section");
+      printf("starting crit section\n");
       // start critical section
       result = returnlicense();
 
