@@ -24,6 +24,8 @@ int returnlicense(void) {
 
   nlicenses->nlicenses = nlicenses->nlicenses + 1;
 
+  printf("(returnlicense) next licenses: %d\n", nlicenses->nlicenses);
+
   return 0;
 }
 
@@ -47,6 +49,8 @@ void addtolicenses(int n) {
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses + n;
+
+  printf("(addtolicenses) new licenses: %d\n", nlicenses->nlicenses);
 }
 
 // Decrements the number of licenses by n
@@ -62,9 +66,13 @@ void removelicenses(int n) {
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses - n;
+
+  printf("(removelicenses) new licenses: %d\n", nlicenses->nlicenses);
 }
 
-/**
+/**      char bufr[80];
+      sprintf(bufr, "runsim: Error: semid result: %d\n", semid);
+      perror(bufr);
  * Write the specified message to the log file.
  * There's only 1 log file.
  * This function will treat the log file as a critical resource.
