@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
         hasSleepTime = 1;
         break;
       default:
-        perror("runsim: Error: Invalid option. Only -t or -h is allowed.\n");
+        perror("runsim: Error: Invalid option. Only -t is allowed.\n");
         return 1;
     }
   }
@@ -177,19 +177,19 @@ int main(int argc, char *argv[]) {
 
   if (argc != 2 && argc != 4) {
     printf("argc: %d\n", argc);
-    fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>\n", argv[0]);
+    fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>\n", argv[0]);
     return -1;
   }
   if(argc == 2) {
     if(!atoi(argv[1])) {
-      fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
       return -1;
     }
     nlicensesInput = atoi(argv[1]);
   }
   else if(argc == 4) {
     if(!atoi(argv[3])) {
-      fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
       return -1;
     }
     nlicensesInput = atoi(argv[3]);
@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
   }
 
   if(nlicensesInput < 0) {
-    perror("Usage: ./runsim [-h] [-t sec] <number-of-licenses>, where n is an integer >= 0\n");
+    perror("Usage: ./runsim [-t sec] <number-of-licenses>, where n is an integer >= 0\n");
     return -1;
   }
   else if(nlicensesInput > MAX_LICENSES) {
