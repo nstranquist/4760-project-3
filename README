@@ -8,7 +8,9 @@ Compilation:
 - "make clean" will clean up the compiled output files
 
 Running:
-- ./runsim n < testing.data  // where "n" is the number of licenses specified (MAX at one time is 20)
+- ./runsim [-t sec] n < testing.data
+  - where "n" is the number of licenses specified (MAX at one time is 20)
+  - where "t" is the number of seconds before the program times out (default 100)
 
 What the Program Does:
 
@@ -17,7 +19,5 @@ Making use of shared memory, the program records relevant information about the 
 nlicenses is an important value that holds the current number of available licenses.
 If a child process requests a license that is not available, it will go into a busy-wait until one becomes available, checking for a new license every second.
 Even if "n" is specified as 1000, the maximum amount of processes allowed is 20, defined in "config.h"
-
-<!-- The program also implements the Bakery Algorithm to manage its critical section: nlicenses and logging to file -->
 
 This program implements semaphores to mange its critical section: nlicenses and logging to file

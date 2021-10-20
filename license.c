@@ -7,36 +7,27 @@ struct License *nlicenses;
 
 // Blocks until a license is available
 int getlicense(void) {
-  sleep(1);
   if(nlicenses->nlicenses <= 0)
     return 1;
 
   nlicenses->nlicenses = nlicenses->nlicenses - 1;
-
-  printf("licenses: %d\n", nlicenses->nlicenses);
 
   return 0;
 }
 
 // Increments the # of licenses available
 int returnlicense(void) {
-  sleep(1);
-
   if(nlicenses->nlicenses >= MAX_LICENSES) {
     return 1;
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses + 1;
 
-  printf("returned license: %d\n", nlicenses->nlicenses);
-
   return 0;
 }
 
 // Performs any needed initialization of the license object
 int initlicense(int max) {
-  sleep(1);
-
   // set both to max initially, but only nlicenses will change up and down
   nlicenses->nlicenses = max;
   nlicenses->nlicenses_max = max;
@@ -45,8 +36,6 @@ int initlicense(int max) {
 
 // Adds n licenses to the number available
 void addtolicenses(int n) {
-  sleep(1);
-
   if (n < 0)
     return;
   if(nlicenses->nlicenses + n > nlicenses->nlicenses_max) {
@@ -59,8 +48,6 @@ void addtolicenses(int n) {
 
 // Decrements the number of licenses by n
 void removelicenses(int n) {
-  sleep(1);
-
   if(n < 0)
     return;
   if(nlicenses->nlicenses - n < 0) {
@@ -69,8 +56,6 @@ void removelicenses(int n) {
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses - n;
-
-  printf("removing licenses available: %d\n", nlicenses->nlicenses);
 }
 
 /***

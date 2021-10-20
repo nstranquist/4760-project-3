@@ -25,7 +25,6 @@
 #include <errno.h>
 #include <signal.h>
 #include <time.h>
-#include <stdarg.h> // for optional parameters
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
@@ -41,9 +40,6 @@
 #include "config.h"
 #include "license.h"
 
-// Q) How can i get the semaphore without creating new one with IPC_CREATE?
-// #define PERMS (IPC_CREAT | 0666) // (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
-
 #define PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
 // Function definitions
@@ -58,7 +54,6 @@ void wait_sem(int semid, struct sembuf *sops, size_t nsops);
 void signal_sem(int semid, struct sembuf *sops, size_t nsops);
 int removesem(int semid);
 int r_semop(int semid, struct sembuf *sops, int nsops);
-// int initelement(int semid, int semnum, int semvalue);
 
 
 // Variable definitions
@@ -119,7 +114,6 @@ static int timerHandler(int s) {
   int errsave;
   errsave = errno;
   write(STDERR_FILENO, "The time limit was reached\n", 1);
-  // raise(SIGINT);
   errno = errsave;
 }
 
@@ -320,7 +314,7 @@ int main(int argc, char *argv[]) {
       }
       else if(wpid == 0) {
         // child is still running
-        printf("Child is still running\n");
+        // printf("Child is still running\n");
       }
       else {
         wait_sem(semid, semwait, 1);
@@ -359,10 +353,6 @@ int main(int argc, char *argv[]) {
 
   if(removesem(semid) == -1) {
     perror("runsim: Error: Failed to remove semaphore\n");
-  }
-  else {
-    printf("semid: %d\n", semid);
-    perror("runsim: Did remove semaphore\n");
   }
   if(detachandremove(shmid, nlicenses) == -1) {
     perror("runsim: Error: Failed to detach and remove shared memory segment\n");
@@ -430,7 +420,6 @@ void docommand(char *cline) {
     printf("Grand child finished, result: %d\n", WEXITSTATUS(grandchild_status));
 
     wait_sem(semid, semwait, 1);
-    perror("done waiting\n");
 
     // start critical section
     returnlicense();
@@ -481,8 +470,6 @@ int removesem(int semid) {
 
 // From textbook
 int detachandremove(int shmid, void *shmaddr) {
-  printf("cleaning up id %d\n", shmid);
-
   int error = 0;
 
   if (shmdt(shmaddr) == -1) {
