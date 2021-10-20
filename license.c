@@ -11,6 +11,8 @@ int getlicense(void) {
   if(nlicenses->nlicenses <= 0)
     return 1;
 
+  nlicenses->nlicenses = nlicenses->nlicenses - 1;
+
   printf("licenses: %d\n", nlicenses->nlicenses);
 
   return 0;
@@ -20,11 +22,13 @@ int getlicense(void) {
 int returnlicense(void) {
   sleep(1);
 
-  if(nlicenses->nlicenses >= nlicenses->nlicenses_max || nlicenses->nlicenses >= MAX_LICENSES) {
+  if(nlicenses->nlicenses >= MAX_LICENSES) {
     return 1;
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses + 1;
+
+  printf("returned license: %d\n", nlicenses->nlicenses);
 
   return 0;
 }
@@ -43,10 +47,10 @@ int initlicense(int max) {
 void addtolicenses(int n) {
   sleep(1);
 
-  if(nlicenses->nlicenses + n > nlicenses->nlicenses_max) {
+  if (n < 0)
     return;
-  }
-  if(n < 0) {
+  if(nlicenses->nlicenses + n > nlicenses->nlicenses_max) {
+    nlicenses->nlicenses = nlicenses->nlicenses_max;
     return;
   }
 
@@ -57,15 +61,16 @@ void addtolicenses(int n) {
 void removelicenses(int n) {
   sleep(1);
 
+  if(n < 0)
+    return;
   if(nlicenses->nlicenses - n < 0) {
     nlicenses->nlicenses = 0;
     return;
   }
-  if(n < 0) {
-    return;
-  }
 
   nlicenses->nlicenses = nlicenses->nlicenses - n;
+
+  printf("removing licenses available: %d\n", nlicenses->nlicenses);
 }
 
 /***

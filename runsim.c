@@ -75,12 +75,10 @@ static void myhandler(int signum) {
   if(signum == SIGINT) {
     // is ctrl-c interrupt
     perror("\nrunsim: Ctrl-C Interrupt Detected. Shutting down gracefully...\n");
-    signal(SIGQUIT, SIG_IGN);
   }
   else if(signum == SIGALRM) {
     // is timer interrupt
     perror("\nrunsim: Info: The time for this program has expired. Shutting down gracefully...\n");
-    signal(SIGQUIT, SIG_IGN);
   }
   else {
     perror("\nrunsim: Warning: Only Ctrl-C and Timer signal interrupts are being handled.\n");
@@ -113,6 +111,7 @@ static void myhandler(int signum) {
 
   kill(getpid(), SIGKILL);
 	exit(0);
+  signal(SIGQUIT, SIG_IGN);
 }
 
 // to handle time interrupts
@@ -277,9 +276,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  wait_sem(semid, semwait, 1);
 
   // critical section
   initlicense(nlicensesInput);
+
+  signal_sem(semid, semsignal, 1);
 
 
   printf("\n");
@@ -292,7 +294,6 @@ int main(int argc, char *argv[]) {
 
     // 1. Fork a child that calls docommand
     pid_t child_pid = fork();
- 
     if (child_pid == -1) {
       perror("runsim: Error: Failed to fork a child process\n");
       if (detachandremove(shmid, nlicenses) == -1)
@@ -361,7 +362,7 @@ int main(int argc, char *argv[]) {
   }
   else {
     printf("semid: %d\n", semid);
-    perror("runsim: Did remove semaphore");
+    perror("runsim: Did remove semaphore\n");
   }
   if(detachandremove(shmid, nlicenses) == -1) {
     perror("runsim: Error: Failed to detach and remove shared memory segment\n");
@@ -379,18 +380,15 @@ void docommand(char *cline) {
 
   // check if license available as well
   wait_sem(semid, semwait, 1);
-
   result = getlicense();
+  signal_sem(semid, semsignal, 1);
 
   while(result == 1) {
-    sleep(1);
+    sleep(1);   
+    wait_sem(semid, semwait, 1);
     result = getlicense();
+    signal_sem(semid, semsignal, 1);
   }
-
-  // actually consume the license for the process using bakery while still in critical section
-  removelicenses(1);
-  
-  signal_sem(semid, semsignal, 1);
 
   // Fork to grand-child
   pid_t grandchild_id = fork();
@@ -432,6 +430,7 @@ void docommand(char *cline) {
     printf("Grand child finished, result: %d\n", WEXITSTATUS(grandchild_status));
 
     wait_sem(semid, semwait, 1);
+    perror("done waiting\n");
 
     // start critical section
     returnlicense();
