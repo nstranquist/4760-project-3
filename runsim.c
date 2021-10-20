@@ -29,6 +29,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <getopt.h>
@@ -43,25 +44,24 @@
 // Q) How can i get the semaphore without creating new one with IPC_CREATE?
 // #define PERMS (IPC_CREAT | 0666) // (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
+#define PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
 // Function definitions
 void docommand(char *cline);
 int detachandremove(int shmid, void *shmaddr);
 char * getTimeFormattedMessage(char *msg);
-// int killAllPids();
 
 // Semaphore functions and helpers
 int initelement(int semid, int semnum, int semvalue);
-int removesem(int semid);
 void setsembuf(struct sembuf *s, int num, int op, int flg);
+void wait_sem(int semid, struct sembuf *sops, size_t nsops);
+void signal_sem(int semid, struct sembuf *sops, size_t nsops);
+int removesem(int semid);
 int r_semop(int semid, struct sembuf *sops, int nsops);
-int detachandremovesem(int semid, void *semaddr);
+// int initelement(int semid, int semnum, int semvalue);
 
 
-// save pid's in a global array
-// pid_t * pid_arr[]; // Tring kill() first
-
-
+// Variable definitions
 int shmid;
 int semid; // for semaphore
 void *shmaddr;
@@ -70,17 +70,17 @@ struct sembuf semwait[1];
 
 extern struct License *nlicenses;
 
+
 static void myhandler(int signum) {
   if(signum == SIGINT) {
     // is ctrl-c interrupt
     perror("\nrunsim: Ctrl-C Interrupt Detected. Shutting down gracefully...\n");
-  }
-  else if(signum == SIGPROF) {
-    perror("\nrunsim: The time for this program has expired. Shutting down gracefully...\n");
+    signal(SIGQUIT, SIG_IGN);
   }
   else if(signum == SIGALRM) {
     // is timer interrupt
     perror("\nrunsim: Info: The time for this program has expired. Shutting down gracefully...\n");
+    signal(SIGQUIT, SIG_IGN);
   }
   else {
     perror("\nrunsim: Warning: Only Ctrl-C and Timer signal interrupts are being handled.\n");
@@ -92,29 +92,11 @@ static void myhandler(int signum) {
   // Print time to logfile before exit
   char *msg = getTimeFormattedMessage(" - Termination");
 
-  int error;
-  if ((error = r_semop(semid, semwait, 1)) == -1) {
-    char bufr2[80];
-    sprintf(bufr2, "runsim: Error: Child failed to lock semid: %d\n", error);
-    perror(bufr2);
+  logmsg(msg);
 
-    exit(1);
-  }
-  else {
-    // start critical section
-    logmsg(msg);
+  removesem(semid); // will succeed for first execution
 
-    // exit critical section
-    if ((error = r_semop(semid, semsignal, 1)) == -1) {
-      char bufr3[80];
-      sprintf(bufr3, "runsim: Error: Failed to unlock semid: %d\n", error);
-      perror(bufr3);
-    }
-  }
-
-  int result = detachandremove(shmid, nlicenses);
-
-  if(result == -1) {
+  if(detachandremove(shmid, nlicenses) == -1) {
     perror("runsim: Error: Failure to detach and remove memory\n");
 
     kill(getpid(), SIGKILL); // SIGKILL, SIGTERM, SIGINT
@@ -123,40 +105,26 @@ static void myhandler(int signum) {
   }
 
   pid_t group_id = getpgrp();
-  if(group_id < 0) {
-    perror("Error: group id not found");
-  }
-  else {
+  if(group_id < 0)
+    perror("runsim: Info: group id not found\n");
+  else
     killpg(group_id, signum);
-  }
 
-  if ((error = removesem(semid)) == -1) {
-    char bufr4[80];
-    sprintf(bufr4, "runsim: Error: Failed to clean up: %d\n", error);
-    perror(bufr4);
-
-    kill(getpid(), SIGKILL);
-
-    exit(1);
-  }
 
   kill(getpid(), SIGKILL);
-
-	exit(1);
+	exit(0);
 }
 
 // to handle time interrupts
 static int timerHandler(int s) {
-  perror("Timer handler called\n");
   int errsave;
   errsave = errno;
   write(STDERR_FILENO, "The time limit was reached\n", 1);
-  raise(SIGINT);
+  // raise(SIGINT);
   errno = errsave;
 }
 
 static int setupinterrupt(void) {
-  perror("setting up interrupt\n");
   struct sigaction act;
   act.sa_handler = myhandler;
   act.sa_flags = 0;
@@ -164,7 +132,6 @@ static int setupinterrupt(void) {
 }
 
 static int setupitimer(int sleepTime) {
-  printf("setting timer for %d seconds\n", sleepTime);
   struct itimerval value;
   value.it_interval.tv_sec = 0;
   value.it_interval.tv_usec = 0;
@@ -172,6 +139,21 @@ static int setupitimer(int sleepTime) {
   value.it_value.tv_usec = 0;
   return (setitimer(ITIMER_PROF, &value, NULL));
 }
+
+void wait_sem(int semid, struct sembuf *sops, size_t nsops) {
+  while(r_semop(semid, sops, nsops) == -1) {
+    perror("runsim: Error: Failed to enter critical section (semop wait)\n");
+    exit(1);
+  }
+}
+
+void signal_sem(int semid, struct sembuf *sops, size_t nsops) {
+  while(r_semop(semid, sops, nsops) == -1) {
+    perror("runsim: Error: Failed to exit critical section (semop signal)\n");
+    exit(1);
+  }
+}
+
 
 // Write a runsim program that runs up to n processes at a time. Start the runsim program by typing the following command
 int main(int argc, char *argv[]) {
@@ -182,7 +164,7 @@ int main(int argc, char *argv[]) {
   int error;
 
   // get option for "-t" time, if it exists
-  while((option = getopt(argc, argv, "t:")) != -1) {
+  while((option = getopt(argc, argv, ":t:")) != -1) {
     switch(option) {
       case 't':
         // check that sleepTime is integer
@@ -194,27 +176,27 @@ int main(int argc, char *argv[]) {
         hasSleepTime = 1;
         break;
       default:
-        perror("runsim: Error: Invalid option. Only -t is allowed.\n");
+        perror("runsim: Error: Invalid option. Only -t or -h is allowed.\n");
         return 1;
     }
   }
 
-  // Validate CLI Arguments
+
   if (argc != 2 && argc != 4) {
     printf("argc: %d\n", argc);
-    fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>\n", argv[0]);
+    fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>\n", argv[0]);
     return -1;
   }
   if(argc == 2) {
     if(!atoi(argv[1])) {
-      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
       return -1;
     }
     nlicensesInput = atoi(argv[1]);
   }
   else if(argc == 4) {
     if(!atoi(argv[3])) {
-      fprintf(stderr, "runsim: Error: Usage: %s [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
+      fprintf(stderr, "runsim: Error: Usage: %s [-h] [-t sec] <number-of-licenses>, where n is an integer\n", argv[0]);
       return -1;
     }
     nlicensesInput = atoi(argv[3]);
@@ -230,19 +212,17 @@ int main(int argc, char *argv[]) {
       perror("runsim: Error: Usage: sleep time specified by -t is too large.\n");
       return -1;
     }
-    printf("sleep time valid: %d\n", sleepTime);
   }
   else {
     sleepTime = SLEEP_TIME; // assign to default (100s) if none provided
-    printf("using default sleep time: %d\n", sleepTime);
   }
 
   if(nlicensesInput < 0) {
-    fprintf(stderr, "Usage: %s [-t sec] <number-of-licenses>, where n is an integer >= 0\n", argv[0]);
+    perror("Usage: ./runsim [-h] [-t sec] <number-of-licenses>, where n is an integer >= 0\n");
     return -1;
   }
   else if(nlicensesInput > MAX_LICENSES) {
-    printf("runsim: Warning: Max Licenses at a time is %d\n", MAX_LICENSES);
+    perror("runsim: Warning: Max Licenses at a time is 20\n");
     nlicensesInput = MAX_LICENSES;
   }
 
@@ -263,8 +243,6 @@ int main(int argc, char *argv[]) {
 
   printf("%d licenses specified\n", nlicensesInput);
 
-  sleep(30);
-
   // allocate shared memory
   shmid = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
   printf("shmid: %d\n", shmid);
@@ -282,45 +260,27 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  // Create a semaphore containing a single element
-  semid = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-  printf("semid: %d\n", semid);
-  if (semid == -1) {
-    perror("runsim: Error: Failed to create semaphore\n");
-    return -1;
+  // Create semaphore containing a single element
+  if((semid = semget(IPC_PRIVATE, 1, PERMS)) == -1) {
+    perror("runsim: Error: Failed to create private semaphore\n");
+    return 1;
   }
 
-  // decrement semwait element 0
-  setsembuf(semwait, 0, -1, 0);
+  setsembuf(semwait, 0, -1, 0); // decrement first element of semwait
+  setsembuf(semsignal, 0, 1, 0); // increment first element of semsignal
 
-  // increment semsignal element 0
-  setsembuf(semsignal, 0, 1, 0);
-
-  // initialize the semaphore element
-  if (initelement(semid, 0, 1) == -1) {
-    perror("runsim: Error: Failed to initialize semaphore element to 1\n");
-
-    if (removesem(semid) == -1)
+  // initialize semaphore before use
+  if(initelement(semid, 0, 1) == -1) {
+    perror("runsim: Error: Failed to init semaphore element value to 1\n");
+    if(removesem(semid) == -1)
       perror("runsim: Error: Failed to remove failed semaphore\n");
-
     return 1;
   }
 
-  // initialize n licenses with bakery (or sempahore)
-  if ((error = r_semop(semid, semwait, 1)) == -1) {
-    char bufr[80];
-    sprintf(bufr, "runsim: Error: Child failed to lock semid: %d\n", error);
-    perror(bufr);
-    return 1;
-  }
-  else {
-    // critical section
-    initlicense(nlicensesInput);
 
-    if ((error = r_semop(semid, semsignal, 1)) == -1) {
-      fprintf(stderr, "runsim: Error: Failed to unlock semid: %d\n", error);
-    }
-  }
+  // critical section
+  initlicense(nlicensesInput);
+
 
   printf("\n");
 
@@ -340,15 +300,10 @@ int main(int argc, char *argv[]) {
       return -1;
     }
 
-    // add to global array
-
-
     // child's code if pid is 0
     if (child_pid == 0) {
       // attach memory again, because you are the child
       nlicenses = (struct License *)shmat(shmid, NULL, 0); 
-
-      // semid = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
 
       // Call docommand child
       docommand(cline);
@@ -364,39 +319,21 @@ int main(int argc, char *argv[]) {
       }
       else if(wpid == 0) {
         // child is still running
-        // printf("Child is still running\n");
+        printf("Child is still running\n");
       }
       else {
-        if ((error = r_semop(semid, semwait, 1)) == -1) {
-          char bufr[80];
-          sprintf(bufr, "runsim: Error: Child failed to lock semid: %d\n", error);
-          perror(bufr);
-          exit(1);
-        }
-        else {
-          // start critical section
-          int result = returnlicense();
+        wait_sem(semid, semwait, 1);
 
-          if(result == 1) {
-            printf("runsim: Error: Failed to return license\n");
-          }
-          
-          // exit critical section
-          if ((error = r_semop(semid, semsignal, 1)) == -1) {
-            char bufr[80];
-            sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-            perror(bufr);
-            exit(1);
-          }
-        }
+        int result = returnlicense();
 
+        signal_sem(semid, semsignal, 1);
       }
     }
   }
 
   // Wait for all children to finish, after the main loop is complete
   while(wait(NULL) > 0) {
-    printf("Waiting for all children to finish\n");
+    printf("Waiting for all children to finish...\n");
   }
 
   nlicenses = (struct License *)shmat(shmid, NULL, 0);
@@ -404,41 +341,30 @@ int main(int argc, char *argv[]) {
     perror("runsim: Error: Failed to attach to shared memory\n");
     if (shmctl(shmid, IPC_RMID, NULL) == -1)
       perror("runsim: Error: Failed to remove memory segment\n");
+    if(removesem(semid) == -1) {
+      perror("runsim: Error: Failed to remove semaphore\n");
+    }
     return -1;
   }
 
-  // semid = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-  printf("semid result: %d\n", semid);
-
-  // log message before final termination
+  // get the message to log before termination
   char *msg = getTimeFormattedMessage(" - Termination");
 
-  if ((error = r_semop(semid, semwait, 1)) == -1) {
-    char bufr[80];
-    sprintf(bufr, "runsim: Error: Child failed to lock semid: %d", error);
-    perror(bufr);
+  wait_sem(semid, semwait, 1);
+
+  logmsg(msg);
+
+  signal_sem(semid, semsignal, 1);
+
+  if(removesem(semid) == -1) {
+    perror("runsim: Error: Failed to remove semaphore\n");
   }
   else {
-    // start critical section
-    logmsg(msg);
-
-    // exit critical section
-    if ((error = r_semop(semid, semsignal, 1)) == -1) {
-      char bufr[80];
-      sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-      perror(bufr);
-    }
+    printf("semid: %d\n", semid);
+    perror("runsim: Did remove semaphore");
   }
-  
   if(detachandremove(shmid, nlicenses) == -1) {
     perror("runsim: Error: Failed to detach and remove shared memory segment\n");
-    return -1;
-  }
-
-  if (((error = removesem(semid)) == -1)) {
-    char bufr[80];
-    sprintf(bufr, "runsim: Error: Failed to clean up: %d\n", error);
-    perror(bufr);
     return -1;
   }
 
@@ -452,49 +378,19 @@ void docommand(char *cline) {
   printf("received in docammand: %s\n", cline);
 
   // check if license available as well
-  if ((error = r_semop(semid, semwait, 1)) == -1) {
-    char bufr[80];
-    sprintf(bufr, "runsim: Error: Child failed to lock semid: %d\n", error);
-    perror(bufr);
-    exit(1);
-  }
-  else { // if (!error)
-    // start critical section
+  wait_sem(semid, semwait, 1);
+
+  result = getlicense();
+
+  while(result == 1) {
+    sleep(1);
     result = getlicense();
-
-    while(result == 1) {
-      sleep(1);
-      result = getlicense();
-    }
-
-    // exit critical section
-    if ((error = r_semop(semid, semsignal, 1)) == -1) {
-      char bufr[80];
-      sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-      perror(bufr);
-      exit(1); // Q) Do I exit() every time it cannot exit crit section?
-    }
   }
 
-  // actually consume the license for the process using bakery
-  if ((error = r_semop(semid, semwait, 1)) == -1) {
-    char bufr[80];
-    sprintf(bufr, "runsim: Error: Child failed to lock semid: %d\n", error);
-    perror(bufr);
-    exit(1);
-  }
-  else { // if (!error)
-    // start critical section
-    removelicenses(1);
-
-    // exit critical section
-    if ((error = r_semop(semid, semsignal, 1)) == -1) {
-      char bufr[80];
-      sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-      perror(bufr);
-      exit(1);
-    }
-  }
+  // actually consume the license for the process using bakery while still in critical section
+  removelicenses(1);
+  
+  signal_sem(semid, semsignal, 1);
 
   // Fork to grand-child
   pid_t grandchild_id = fork();
@@ -504,39 +400,19 @@ void docommand(char *cline) {
   if (grandchild_id == -1) {
     perror("runsim: Error: Failed to fork grand-child process\n");
 
-    if ((error = r_semop(semid, semwait, 1)) == -1) {
-      char bufr[80];
-      sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-      perror(bufr);
-      fprintf(stderr, "runsim: Error: Child failed to lock semid: %d\n", error);
-      exit(1);
-    }
-    else {
-      // start critical section
-      result = returnlicense();
+    wait_sem(semid, semwait, 1);
 
-      // exit critical section
-      if ((error = r_semop(semid, semsignal, 1)) == -1) {
-        char bufr[80];
-        sprintf(bufr, "runsim: Error: Failed to unlock semid: %d\n", error);
-        perror(bufr);
-        exit(1);
-      }
-      else
-        exit(0);
-    }
+    result = returnlicense();
 
-    // return;
+    signal_sem(semid, semsignal, 1);
+
+    exit(1);
   }
   else if (grandchild_id == 0) {
     // In grand-child:
     // reattach memory
     nlicenses = (struct License *)shmat(shmid, NULL, 0);
 
-    // semid = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-    printf("semid result: %d\n", semid);
-
-    
     // get first word from cline
     char *command = strtok(cline, " ");
     // get the rest of the words in the line
@@ -555,38 +431,24 @@ void docommand(char *cline) {
     waitpid(grandchild_id, &grandchild_status, 0);
     printf("Grand child finished, result: %d\n", WEXITSTATUS(grandchild_status));
 
-    if ((error = r_semop(semid, semwait, 1)) == -1) {
-      fprintf(stderr, "runsim: Error: Child failed to lock semid: %d\n", error);
-      exit(1);
-    }
-    else {
-      printf("starting crit section\n");
-      // start critical section
-      result = returnlicense();
+    wait_sem(semid, semwait, 1);
 
-      if(result == 1) {
-        printf("licenses: %d\n", nlicenses->nlicenses);
-      }
+    // start critical section
+    returnlicense();
 
-      // exit critical section
-      if ((error = r_semop(semid, semsignal, 1)) == -1) {
-        fprintf(stderr, "runsim: Error: Failed to unlock semid: %d", error);
-        exit(1);
-      }
-      else
-        exit(0);
-    }
+    signal_sem(semid, semsignal, 1);
+
+    exit(0);
   }
 
   exit(0);
 }
 
-// semaphore helpers
-// sets the value of the specified semaphore element to semvalue
+// Initialize the sempahore element
 int initelement(int semid, int semnum, int semvalue) {
   union semun {
     int val;
-    struct semid_ds *buf;
+    struct semids_ds *buf;
     unsigned short *array;
   } arg;
 
@@ -595,29 +457,27 @@ int initelement(int semid, int semnum, int semvalue) {
   return semctl(semid, semnum, SETVAL, arg);
 }
 
-// deletes the semaphore specified by semid
-int removesem(int semid) {
-  return semctl(semid, 0, IPC_RMID);
-}
-
 // initializes the struct sembuf structure members sem_num, sem_op, and sem_flg
 void setsembuf(struct sembuf *s, int num, int op, int flg) {
   s->sem_num = (short)num;
-
   s->sem_op = (short)op;
-
   s->sem_flg = (short)flg;
-
   return;
 }
 
-// restarts semop after a signal
+// restarts the semop if interrupt received
 int r_semop(int semid, struct sembuf *sops, int nsops) {
-  while (semop(semid, sops, nsops) == -1)
-    if (errno != EINTR)
+  while(semop(semid, sops, nsops) == -1) {
+    if(errno != EINTR)
       return -1;
-
+  }
   return 0;
+}
+
+
+// removed the semaphore specified by semid
+int removesem(int semid) {
+  return semctl(semid, 0, IPC_RMID);;
 }
 
 // From textbook
@@ -633,30 +493,6 @@ int detachandremove(int shmid, void *shmaddr) {
   
   if ((shmctl(shmid, IPC_RMID, NULL) == -1) && !error) {
     fprintf(stderr, "runsim: Error: Can't remove shared memory\n");
-    error = errno;
-  }
-
-  if (!error)
-    return 0;
-
-  errno = error;
-
-  return -1;
-}
-
-// make sure to clean up and deallocate semaphores
-int detachandremovesem(int semid, void *semaddr) {
-  printf("cleaning up semaphore id %d\n", semid);
-
-  int error = 0;
-
-  if (shmdt(semaddr) == -1) {
-    fprintf(stderr, "runsim: Error: Can't detach memory\n");
-    error = errno;
-  }
-  
-  if ((semctl(semid, 0, IPC_RMID, NULL) == -1) && !error) {
-    fprintf(stderr, "runsim: Error: Can't remove shared semaphore memory\n");
     error = errno;
   }
 
@@ -684,16 +520,3 @@ char * getTimeFormattedMessage(char *msg) {
 
   return formatted_msg;
 }
-
-// loop through all pids, and kill(pid) them
-// int killAllPids() {
-//   // get pid_arr length
-//   int pid_arr_length = pid_arr.size();
-
-//   // iterate through pid_arr
-//   for (int i = 0; i < pid_arr_size; i++) {
-//     // kill pid
-//     kill(pid_arr[i], SIGKILL);
-//   }
-
-// }

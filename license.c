@@ -7,6 +7,7 @@ struct License *nlicenses;
 
 // Blocks until a license is available
 int getlicense(void) {
+  sleep(1);
   if(nlicenses->nlicenses <= 0)
     return 1;
 
@@ -17,20 +18,21 @@ int getlicense(void) {
 
 // Increments the # of licenses available
 int returnlicense(void) {
+  sleep(1);
+
   if(nlicenses->nlicenses >= nlicenses->nlicenses_max || nlicenses->nlicenses >= MAX_LICENSES) {
-    printf("runsim: Warning: Max licenses reached\n");
     return 1;
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses + 1;
-
-  printf("(returnlicense) next licenses: %d\n", nlicenses->nlicenses);
 
   return 0;
 }
 
 // Performs any needed initialization of the license object
 int initlicense(int max) {
+  sleep(1);
+
   // set both to max initially, but only nlicenses will change up and down
   nlicenses->nlicenses = max;
   nlicenses->nlicenses_max = max;
@@ -39,40 +41,34 @@ int initlicense(int max) {
 
 // Adds n licenses to the number available
 void addtolicenses(int n) {
+  sleep(1);
+
   if(nlicenses->nlicenses + n > nlicenses->nlicenses_max) {
-    printf("runsim: Warning: Max licenses reached. Cannot add more.\n");
     return;
   }
   if(n < 0) {
-    printf("runsim: Warning: Cannot add negative licenses to total amount.\n");
     return;
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses + n;
-
-  printf("(addtolicenses) new licenses: %d\n", nlicenses->nlicenses);
 }
 
 // Decrements the number of licenses by n
 void removelicenses(int n) {
+  sleep(1);
+
   if(nlicenses->nlicenses - n < 0) {
-    printf("runsim: Warning: removing %d licenses overflows total amount below 0. Keeping the amount at 0.\n", n);
     nlicenses->nlicenses = 0;
     return;
   }
   if(n < 0) {
-    printf("runsim: Warning: Cannot remove negative licenses.\n");
     return;
   }
 
   nlicenses->nlicenses = nlicenses->nlicenses - n;
-
-  printf("(removelicenses) new licenses: %d\n", nlicenses->nlicenses);
 }
 
-/**      char bufr[80];
-      sprintf(bufr, "runsim: Error: semid result: %d\n", semid);
-      perror(bufr);
+/***
  * Write the specified message to the log file.
  * There's only 1 log file.
  * This function will treat the log file as a critical resource.
@@ -85,7 +81,7 @@ void logmsg(const char * msg) {
   FILE * fp = fopen(filename, "a");
 
   if(fp == NULL) {
-    printf("runsim: Error: Could not open log file %s for writing.\n", filename);
+    perror("runsim: Error: Could not open log file %s for writing.\n");
     return;
   }
 
